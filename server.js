@@ -16,6 +16,13 @@ app.use(cors({
 }));
 
 app.use(bodyParser.json());
+app.get("/", (req, res) => {
+  res.status(200).send("✅ HVAC backend is running");
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({ ok: true });
+});
 
 // ✅ Environment variables (set these in Render dashboard)
 const EMAIL_USER = process.env.EMAIL_USER;
