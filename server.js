@@ -104,6 +104,32 @@ app.get("/availability", (req, res) => {
     bookedTimes: bookedAppointments[date] || []
   });
 });
+app.get("/availability", (req, res) => {
+  const { date } = req.query;
+
+  if (!date) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing date parameter"
+    });
+  }
+
+  // For now, return all available slots
+  // (later you can block out booked times)
+  const slots = [
+    "09:00",
+    "11:00",
+    "13:00",
+    "15:00",
+    "17:00"
+  ];
+
+  res.json({
+    success: true,
+    date,
+    slots
+  });
+});
 
 // ===== Booking endpoint =====
 app.post("/book", async (req, res) => {
