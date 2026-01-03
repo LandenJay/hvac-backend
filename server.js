@@ -6,7 +6,7 @@ const nodemailer = require("nodemailer");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
-
+const booked = {};
 const app = express();
 
 app.use(cors({
@@ -66,26 +66,39 @@ app.get("/health", (req, res) => res.status(200).json({ ok: true }));
 
 // ===== Availability endpoint =====
 app.get("/availability", (req, res) => {
-  const date = req.query.date; // YYYY-MM-DD
-  if (!date) return res.status(400).json({ success: false, message: "Missing date" });
+  const date = req.query.date;
+  if (!date) {
+    return res.status(400).json({ success: false, message: "Missing date" });
+  }
 
   const possible = getSlotListForDate(date);
+  const bookedForDate = booked[date] || [];
 
-  db.all(`SELECT time FROM bookings WHERE date = ?`, [date], (err, rows) => {
-    if (err) {
-      console.error("DB error:", err);
-      return res.status(500).json({ success: false, message: "DB error" });
-    }
+  const available = possible.filter(
+    slot => !bookedForDate.includes(slot.value)
+  );
 
-    const bookedTimes = new Set(rows.map(r => r.time));
-    const available = possible.filter(s => !bookedTimes.has(s.value));
-
-    res.json({
-      success: true,
-      date,
-      available, // [{label,value}]
-    });
+  res.json({
+    success: true,
+    date,
+    available,
   });
+});
+
+
+  // in-memory bookings (temporary)
+const bookedForDate = booked[date] || [];
+
+const available = possible.filter(
+  slot => !bookedForDate.includes(slot.value)
+);
+
+res.json({
+  success: true,
+  date,
+  available, // [{ label, value }]
+});
+
 });
 // Temporary in-memory store (later replace with DB)
 const bookedAppointments = {};
