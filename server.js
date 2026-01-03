@@ -113,11 +113,31 @@ app.get("/availability", (req, res) => {
     });
   });
 });
+// Temporary in-memory store (later replace with DB)
+const bookedAppointments = {};
+
+// Availability endpoint
+app.get("/availability", (req, res) => {
+  const { date } = req.query;
+
+  if (!date) {
+    return res.status(400).json({ success: false, message: "date is required" });
+  }
+
+  return res.json({
+    success: true,
+    date,
+    bookedTimes: bookedAppointments[date] || []
+  });
+});
 
 // ===== Booking endpoint =====
 app.post("/book", async (req, res) => {
   try {
     const { date, time, name, email, phone, address } = req.body;
+// Save booked time in memory
+if (!bookedAppointments[date]) bookedAppointments[date] = [];
+bookedAppointments[date].push(time);
 
     if (!date || !time || !name || !email || !phone || !address) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
