@@ -5,7 +5,6 @@ const { createEvent } = require("ics");
 const nodemailer = require("nodemailer");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 
 const app = express();
@@ -27,32 +26,7 @@ if (!EMAIL_USER || !EMAIL_PASS) {
   console.warn("⚠️ WARNING: EMAIL_USER and EMAIL_PASS environment variables are not set.");
 }
 
-// ===== SQLite DB =====
-// For local dev: creates hvac.sqlite in backend folder
-// On Render: you should mount a Persistent Disk and point DB_PATH to it (optional but recommended)
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, "hvac.sqlite");
-const db = new sqlite3.Database(DB_PATH);
 
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS bookings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      date TEXT NOT NULL,          -- YYYY-MM-DD
-      time TEXT NOT NULL,          -- HH:MM (24h)
-      name TEXT NOT NULL,
-      email TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      address TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-
-  // Prevent double-booking
-  db.run(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_date_time
-    ON bookings(date, time)
-  `);
-});
 
 // ===== Time slots =====
 const slots = {
