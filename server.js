@@ -5,39 +5,116 @@ const { createEvent } = require("ics");
 const nodemailer = require("nodemailer");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const sqlite3 = require("sqlite3").verbose();
+const path = require("path");
 
 const app = express();
 
-// ✅ CORS fix – allow requests from anywhere for now (later, replace "*" with your domain)
 app.use(cors({
-  origin: "*",
+  origin: "*", // later: replace with your domain(s)
   methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
+  allowedHeaders: ["Content-Type"],
 }));
 
 app.use(bodyParser.json());
-app.get("/", (req, res) => {
-  res.status(200).send("✅ HVAC backend is running");
-});
 
-app.get("/health", (req, res) => {
-  res.status(200).json({ ok: true });
-});
-
-// ✅ Environment variables (set these in Render dashboard)
+// ===== Email env vars =====
 const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS;
+const RECEIVE_EMAIL = process.env.RECEIVE_EMAIL || EMAIL_USER;
 
 if (!EMAIL_USER || !EMAIL_PASS) {
   console.warn("⚠️ WARNING: EMAIL_USER and EMAIL_PASS environment variables are not set.");
 }
 
-// Simple helper to parse "HH:MM" into integers
+// ===== SQLite DB =====
+// For local dev: creates hvac.sqlite in backend folder
+// On Render: you should mount a Persistent Disk and point DB_PATH to it (optional but recommended)
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, "hvac.sqlite");
+const db = new sqlite3.Database(DB_PATH);
+
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS bookings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,          -- YYYY-MM-DD
+      time TEXT NOT NULL,          -- HH:MM (24h)
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      address TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Prevent double-booking
+  db.run(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_date_time
+    ON bookings(date, time)
+  `);
+});
+
+// ===== Time slots =====
+const slots = {
+  weekday: [
+    { label: "9:00 AM", value: "09:00" },
+    { label: "11:00 AM", value: "11:00" },
+    { label: "1:00 PM", value: "13:00" },
+    { label: "3:00 PM", value: "15:00" },
+    { label: "5:00 PM", value: "17:00" },
+  ],
+  saturday: [
+    { label: "9:00 AM", value: "09:00" },
+    { label: "11:00 AM", value: "11:00" },
+    { label: "1:00 PM", value: "13:00" },
+  ],
+  sunday: [],
+};
+
 function parseTimeHHMM(hhmm) {
   const [hh, mm] = hhmm.split(":").map(Number);
   return { hh, mm };
 }
 
+function getSlotListForDate(dateStr) {
+  // dateStr: YYYY-MM-DD
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const dow = dt.getDay(); // 0=Sun 6=Sat
+  if (dow === 0) return slots.sunday;
+  if (dow === 6) return slots.saturday;
+  return slots.weekday;
+}
+
+// ===== Basic routes =====
+app.get("/", (req, res) => res.status(200).send("✅ HVAC backend is running"));
+app.get("/health", (req, res) => res.status(200).json({ ok: true }));
+
+// ===== Availability endpoint =====
+app.get("/availability", (req, res) => {
+  const date = req.query.date; // YYYY-MM-DD
+  if (!date) return res.status(400).json({ success: false, message: "Missing date" });
+
+  const possible = getSlotListForDate(date);
+
+  db.all(`SELECT time FROM bookings WHERE date = ?`, [date], (err, rows) => {
+    if (err) {
+      console.error("DB error:", err);
+      return res.status(500).json({ success: false, message: "DB error" });
+    }
+
+    const bookedTimes = new Set(rows.map(r => r.time));
+    const available = possible.filter(s => !bookedTimes.has(s.value));
+
+    res.json({
+      success: true,
+      date,
+      available, // [{label,value}]
+    });
+  });
+});
+
+// ===== Booking endpoint =====
 app.post("/book", async (req, res) => {
   try {
     const { date, time, name, email, phone, address } = req.body;
@@ -46,62 +123,92 @@ app.post("/book", async (req, res) => {
       return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
-    // Parse date and time
-    const [yearStr, monthStr, dayStr] = date.split("-");
-    const year = Number(yearStr);
-    const month = Number(monthStr);
-    const day = Number(dayStr);
+    // First: attempt to insert booking (this enforces no double-booking)
+    db.run(
+      `INSERT INTO bookings (date, time, name, email, phone, address) VALUES (?, ?, ?, ?, ?, ?)`,
+      [date, time, name, email, phone, address],
+      async function (err) {
+        if (err) {
+          // Unique constraint hit = already booked
+          if (String(err.message || "").includes("UNIQUE")) {
+            return res.status(409).json({ success: false, message: "That time slot was just booked. Please pick another." });
+          }
+          console.error("DB insert error:", err);
+          return res.status(500).json({ success: false, message: "DB error" });
+        }
 
-    const { hh, mm } = parseTimeHHMM(time);
-    const startArray = [year, month, day, hh, mm];
-    const duration = { hours: 1, minutes: 0 };
+        // Create ICS
+        const [yearStr, monthStr, dayStr] = date.split("-");
+        const year = Number(yearStr);
+        const month = Number(monthStr);
+        const day = Number(dayStr);
+        const { hh, mm } = parseTimeHHMM(time);
 
-    const event = {
-      start: startArray,
-      duration,
-      title: `J & L Climate Co. Appointment - ${name}`,
-      description: `Appointment for ${name}, Phone: ${phone}, Address: ${address}`,
-      status: "CONFIRMED",
-      organizer: { name: "J & L Climate Co.", email: EMAIL_USER },
-      attendees: [
-        { name: name, email: email, rsvp: true },
-        { name: "J & L Climate Co.", email: EMAIL_USER, rsvp: false }
-      ]
-    };
+        const event = {
+          start: [year, month, day, hh, mm],
+          duration: { hours: 1, minutes: 0 },
+          title: `J & L Climate Co. Appointment - ${name}`,
+          description: `Appointment booked via website.\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nAddress: ${address}\nDate: ${date}\nTime: ${time}`,
+          status: "CONFIRMED",
+          organizer: { name: "J & L Climate Co.", email: EMAIL_USER },
+          attendees: [
+            { name, email, rsvp: true },
+            { name: "J & L Climate Co.", email: RECEIVE_EMAIL, rsvp: false },
+          ],
+        };
 
-    createEvent(event, async (error, value) => {
-      if (error) {
-        console.error("ICS error:", error);
-        return res.status(500).json({ success: false, message: "Failed to create calendar invite" });
+        createEvent(event, async (icsErr, icsValue) => {
+          if (icsErr) {
+            console.error("ICS error:", icsErr);
+            // Booking exists, but invite failed
+            return res.status(500).json({ success: false, message: "Booked, but failed to create calendar invite." });
+          }
+
+          // Send email
+          try {
+            const transporter = nodemailer.createTransport({
+              service: "gmail",
+              auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+            });
+
+            await transporter.sendMail({
+              from: `"J & L Climate Co." <${EMAIL_USER}>`,
+              to: [email, RECEIVE_EMAIL],
+              subject: "Your Appointment is Confirmed",
+              text:
+                `Hi ${name},\n\n` +
+                `Your appointment is scheduled for ${date} at ${time}.\n\n` +
+                `Phone: ${phone}\nAddress: ${address}\n\n` +
+                `Thank you!\nJ & L Climate Co.`,
+              icalEvent: {
+                filename: "invite.ics",
+                method: "REQUEST",
+                content: icsValue,
+              },
+            });
+
+            return res.json({ success: true, message: "Booked & invite emailed" });
+          } catch (mailErr) {
+            console.error("Mail error:", mailErr);
+            return res.status(500).json({ success: false, message: "Booked, but failed to send email." });
+          }
+        });
       }
-
-      let transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: EMAIL_USER, pass: EMAIL_PASS }
-      });
-
-      const mailOptions = {
-        from: `"J & L Climate Co." <${EMAIL_USER}>`,
-        to: [email, EMAIL_USER],
-        subject: "Your Appointment is Confirmed",
-        text: `Hi ${name},\n\nYour appointment with J & L Climate Co. is confirmed:\n\nDate: ${date}\nTime: ${time}\nPhone: ${phone}\nAddress: ${address}\n\nThank you!`,
-        icalEvent: { filename: "invite.ics", method: "REQUEST", content: value }
-      };
-
-      try {
-        await transporter.sendMail(mailOptions);
-        return res.json({ success: true, message: "Booked & invite emailed" });
-      } catch (mailErr) {
-        console.error("Mail error:", mailErr);
-        return res.status(500).json({ success: false, message: "Booking created but failed to send email" });
-      }
-    });
-  } catch (err) {
-    console.error("Server error:", err);
+    );
+  } catch (e) {
+    console.error("Server error:", e);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-// ✅ Render fix: use process.env.PORT, fallback to 3000 for local dev
+// Render PORT
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.use(cors({
+  origin: [
+    "https://jnlclimatecompany.com",
+    "https://www.jnlclimatecompany.com"
+  ],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+}));
