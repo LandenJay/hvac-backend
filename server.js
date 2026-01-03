@@ -99,7 +99,7 @@ res.json({
   available, // [{ label, value }]
 });
 
-});
+
 // Temporary in-memory store (later replace with DB)
 const bookedAppointments = {};
 
