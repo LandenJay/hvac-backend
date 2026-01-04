@@ -117,9 +117,9 @@ app.get("/availability", (req, res) => {
  */
 app.post("/book", async (req, res) => {
   try {
-    const { date, time, name, email, phone, address } = req.body;
+    const { date, time, name, email, phone, address, details } = req.body;
 
-    if (!date || !time || !name || !email || !phone || !address) {
+    if (!date || !time || !name || !email || !phone || !address || !details) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
@@ -146,7 +146,7 @@ app.post("/book", async (req, res) => {
 
     const event = {
       title: "HVAC Appointment - J&L Climate Co.",
-      description: `Appointment for ${name}\nPhone: ${phone}\nAddress: ${address}\nEmail: ${email}`,
+      description: `Appointment for ${name}\nPhone: ${phone}\nAddress: ${address}\nEmail: ${email}\n\nService Details:\n${details}`,
       start: [year, month, day, hh, mm],
       duration: { minutes: durationMinutes },
       status: "CONFIRMED",
@@ -174,7 +174,7 @@ app.post("/book", async (req, res) => {
         from: EMAIL_USER,
         to: email,
         subject: "✅ Appointment Confirmed - J&L Climate Co.",
-        text: `Hi ${name},\n\nYour appointment is confirmed for ${date} at ${time}.\n\nAddress: ${address}\nPhone: ${phone}\n\nThanks,\nJ&L Climate Co.`,
+        text: `Hi ${name},\n\nYour appointment is confirmed for ${date} at ${time}.\n\nAddress: ${address}\nPhone: ${phone}\n\nService Details:\n${details}\n\nThanks,\nJ&L Climate Co.`,
         icalEvent: {
           filename: "appointment.ics",
           method: "REQUEST",
@@ -186,7 +186,8 @@ app.post("/book", async (req, res) => {
   from: EMAIL_USER,
   to: RECEIVE_EMAIL, // your business receiving email
   subject: "📌 New Booking Received (Calendar Invite Attached)",
-  text: `New booking:\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nAddress: ${address}\nDate: ${date}\nTime: ${time}`,
+  text: `New booking:\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nAddress: ${address}\nDate: ${date}\nTime: ${time}\n\nService Details:\n${details}`,
+
   icalEvent: {
     filename: "appointment.ics",
     method: "REQUEST",
