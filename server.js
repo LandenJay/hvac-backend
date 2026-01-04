@@ -183,11 +183,17 @@ app.post("/book", async (req, res) => {
       };
 
       const businessMail = {
-        from: EMAIL_USER,
-        to: RECEIVE_EMAIL,
-        subject: "📌 New Booking Received",
-        text: `New booking:\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nAddress: ${address}\nDate: ${date}\nTime: ${time}`,
-      };
+  from: EMAIL_USER,
+  to: RECEIVE_EMAIL, // your business receiving email
+  subject: "📌 New Booking Received (Calendar Invite Attached)",
+  text: `New booking:\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nAddress: ${address}\nDate: ${date}\nTime: ${time}`,
+  icalEvent: {
+    filename: "appointment.ics",
+    method: "REQUEST",
+    content: value,
+  },
+};
+
 
       try {
         if (EMAIL_USER && EMAIL_PASS) {
