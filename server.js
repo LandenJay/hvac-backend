@@ -174,7 +174,7 @@ app.post("/book", async (req, res) => {
         from: EMAIL_USER,
         to: email,
         subject: "✅ Appointment Confirmed - J&L Climate Co.",
-        text: `Hi ${name},\n\nYour appointment is confirmed for ${date} at ${time}.\n\nAddress: ${address}\nPhone: ${phone} \nService Details:\n${details} \nThanks,\nJ&L Climate Co.`,
+        text: `Hi ${name},\n\nYour appointment is confirmed for ${date} at ${time}.\nAddress: ${address}\nPhone: ${phone} \nService Details: ${details} \nThanks,\nJ&L Climate Co.`,
         icalEvent: {
           filename: "appointment.ics",
           method: "REQUEST",
@@ -186,7 +186,7 @@ app.post("/book", async (req, res) => {
   from: EMAIL_USER,
   to: RECEIVE_EMAIL, // your business receiving email
   subject: "📌 New Booking Received (Calendar Invite Attached)",
-  text: `New booking:\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nAddress: ${address}\nDate: ${date}\nTime: ${time} \nService Details:${details}`,
+  text: `New booking:\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nAddress: ${address}\nDate: ${date}\nTime: ${time} \nService Details: ${details}`,
 
   icalEvent: {
     filename: "appointment.ics",
