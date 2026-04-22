@@ -145,12 +145,12 @@ app.post("/book", async (req, res) => {
     const durationMinutes = 60;
 
     const event = {
-      title: "HVAC Appointment - J&L Climate Co.",
-      description: `Appointment for ${name}\nPhone: ${phone}\nAddress: ${address}\nEmail: ${email}\nService Details:${details}`,
+      title: "Painting Appointment - Olds West Painting",
+      description: `Appointment for ${name}\nPhone: ${phone}\nAddress: ${address}\nEmail: ${email}\nService Details: ${details}`,
       start: [year, month, day, hh, mm],
       duration: { minutes: durationMinutes },
       status: "CONFIRMED",
-      organizer: { name: "J&L Climate Co.", email: EMAIL_USER || "no-reply@example.com" },
+      organizer: { name: "Olds West Painting", email: EMAIL_USER || "no-reply@example.com" },
       attendees: [{ name, email }],
     };
 
@@ -173,8 +173,8 @@ app.post("/book", async (req, res) => {
       const customerMail = {
         from: EMAIL_USER,
         to: email,
-        subject: "✅ Appointment Confirmed - J&L Climate Co.",
-        text: `Hi ${name},\n\nYour appointment is confirmed for ${date} at ${time}.\nAddress: ${address}\nPhone: ${phone} \nService Details: ${details} \nThanks,\nJ&L Climate Co.`,
+        subject: "✅ Appointment Confirmed - Olds West Painting",
+        text: `Hi ${name},\n\nYour appointment is confirmed for ${date} at ${time}.\nAddress: ${address}\nPhone: ${phone} \nService Details: ${details} \nThanks,\nOlds West Painting`,
         icalEvent: {
           filename: "appointment.ics",
           method: "REQUEST",
